@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520">
+  <defs>
+    <style>
+      .bg{fill:#0b1020}
+      .card{fill:#121a33;stroke:#2a3a6a;stroke-width:2;rx:16;ry:16}
+      .title{fill:#e8eeff;font:700 30px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .text{fill:#c6d2ff;font:600 18px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .muted{fill:#9fb0ff;font:500 16px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .pill{fill:#1a2550;stroke:#3a54a8;stroke-width:1.5;rx:999;ry:999}
+      .pillText{fill:#dbe4ff;font:700 16px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .line{stroke:#6f8bff;stroke-width:3;fill:none;opacity:.85}
+      .dot{fill:#6f8bff}
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1200" height="520"/>
+
+  <text class="title" x="44" y="62">Figma ↔ Jira Design Handoff Automation (pipeline flow)</text>
+  <text class="muted" x="44" y="92">Jira issue → find Figma link → extract variants → compare vs AC → comment + report</text>
+
+  <rect class="card" x="44" y="130" width="320" height="320" rx="16" ry="16"/>
+  <text class="text" x="76" y="175">1) Jira</text>
+  <text class="muted" x="76" y="205">Fetch issue(s)</text>
+  <rect class="pill" x="76" y="235" width="256" height="40"/>
+  <text class="pillText" x="92" y="262">summary + description</text>
+  <rect class="pill" x="76" y="285" width="256" height="40"/>
+  <text class="pillText" x="92" y="312">Acceptance Criteria (AC)</text>
+
+  <rect class="card" x="425" y="130" width="350" height="320" rx="16" ry="16"/>
+  <text class="text" x="457" y="175">2) Figma</text>
+  <text class="muted" x="457" y="205">Fetch node from link</text>
+  <rect class="pill" x="457" y="235" width="286" height="40"/>
+  <text class="pillText" x="473" y="262">fileKey + nodeId</text>
+  <rect class="pill" x="457" y="285" width="286" height="40"/>
+  <text class="pillText" x="473" y="312">extract variants/states</text>
+  <rect class="pill" x="457" y="335" width="286" height="40"/>
+  <text class="pillText" x="473" y="362">properties: State, Size…</text>
+
+  <rect class="card" x="830" y="130" width="326" height="320" rx="16" ry="16"/>
+  <text class="text" x="862" y="175">3) Output</text>
+  <text class="muted" x="862" y="205">Comment + report</text>
+  <rect class="pill" x="862" y="235" width="262" height="40"/>
+  <text class="pillText" x="878" y="262">Jira comment summary</text>
+  <rect class="pill" x="862" y="285" width="262" height="40"/>
+  <text class="pillText" x="878" y="312">reports/design-handoff.md</text>
+  <rect class="pill" x="862" y="335" width="262" height="40"/>
+  <text class="pillText" x="878" y="362">optional Confluence link</text>
+
+  <path class="line" d="M364 290 C390 290, 405 290, 425 290"/>
+  <circle class="dot" cx="425" cy="290" r="6"/>
+  <path class="line" d="M775 290 C800 290, 810 290, 830 290"/>
+  <circle class="dot" cx="830" cy="290" r="6"/>
+
+  <text class="muted" x="44" y="492">Tip: Run it on a schedule (Actions) to catch drift early, or on-demand per ticket during handoff.</text>
+</svg>
+
+

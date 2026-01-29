@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660">
+  <defs>
+    <style>
+      .bg{fill:#0b1020}
+      .panel{fill:#121a33;stroke:#2a3a6a;stroke-width:2;rx:16;ry:16}
+      .title{fill:#e8eeff;font:700 28px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .muted{fill:#9fb0ff;font:500 16px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .mono{fill:#c6d2ff;font:600 15px ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+      .ok{fill:#52d18b;font:800 16px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .bad{fill:#ff6b6b;font:800 16px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1200" height="660"/>
+  <text class="title" x="44" y="64">Example Jira comment posted by this automation</text>
+  <text class="muted" x="44" y="94">Illustration of the summary comment (the real tool posts text, not an image).</text>
+
+  <rect class="panel" x="44" y="120" width="1112" height="496" rx="16" ry="16"/>
+
+  <text class="mono" x="80" y="170">Design handoff automation summary</text>
+  <text class="mono" x="80" y="206">Jira: RFW-918 - Radio states alignment</text>
+  <text class="mono" x="80" y="232">Figma: https://www.figma.com/design/FILEKEY?node-id=62-31062</text>
+  <text class="mono" x="80" y="258">Confluence handoff: https://.../Design+Handoff</text>
+
+  <text class="mono" x="80" y="302">Extracted variant properties (best-effort):</text>
+  <text class="mono" x="100" y="330">- State: Default, Disabled, Error, Unavailable, Hover, Focus</text>
+  <text class="mono" x="100" y="356">- Checked: Off, On</text>
+  <text class="mono" x="100" y="382">- Breakpoint: Mobile, Desktop</text>
+
+  <text class="mono" x="80" y="428">Acceptance Criteria section detected</text>
+  <text class="ok" x="440" y="428">YES</text>
+
+  <text class="mono" x="80" y="472">Discrepancies (heuristic):</text>
+  <text class="bad" x="80" y="502">WARN</text>
+  <text class="mono" x="140" y="502">Values in Figma not mentioned in AC: hover, focus</text>
+  <text class="bad" x="80" y="530">WARN</text>
+  <text class="mono" x="140" y="530">Values mentioned in AC but not found in Figma: loading</text>
+
+  <text class="muted" x="80" y="586">Tip: Keep Figma links + state names in the Jira ticket to maximize accuracy.</text>
+</svg>
+
+
