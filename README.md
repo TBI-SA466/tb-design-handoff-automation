@@ -10,6 +10,8 @@ Automates **Figma ↔ Jira “design handoff”**:
     - Figma has states not mentioned in AC
   - Posts a **summary comment** back to the Jira ticket
   - Optionally includes a **Confluence handoff page link**
+  - Sends **Slack/Teams notifications** when drift/warnings are detected
+  - Optionally **auto-inserts a Design Handoff Checklist** into the Jira description if missing
 
 ![Design handoff flow](assets/handoff-flow.svg)
 
@@ -26,12 +28,17 @@ Automates **Figma ↔ Jira “design handoff”**:
 - Works with Jira Cloud REST v3
 - Works with Figma REST API `/files/:key/nodes`
 - Detects Figma variants by parsing **Component Set / Component names** (common “Variant=Value” patterns)
+- Handles **multiple Figma links** per ticket (detects duplicates/conflicts)
+- Supports **multi-file / multi-brand** diffs (TMW/JAB/MSP) when configured
+- Runs **accessibility requirement checks** against AC text (heuristic)
 - Posts a Jira comment summarizing:
   - Figma links found
   - Extracted variant properties + values
   - “AC contains / missing” signals
 
 ![Sample Jira comment](assets/sample-jira-comment.svg)
+
+![Sample report snapshot](assets/sample-report-snapshot.svg)
 
 ## What it does NOT do yet (so expectations are clear)
 
@@ -52,6 +59,9 @@ cp config/example.env .env
 - **Jira**: `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
 - **Figma**: `FIGMA_TOKEN`
 - **Optional**: `CONFLUENCE_HANDOFF_PAGE_URL` (just used as a link in the Jira comment for now)
+- **Optional**: `FIGMA_BRAND_FILE_KEYS` for multi-brand diffs (e.g. `tmw=<fileKey>,jab=<fileKey>,msp=<fileKey>`)
+- **Optional**: `SLACK_WEBHOOK_URL` and/or `TEAMS_WEBHOOK_URL` for notifications
+- **Optional**: `WRITE_BACK` (`true`/`false`) to control whether the tool modifies Jira (comment + checklist)
 
 ## Run (local)
 
@@ -67,6 +77,12 @@ Run for multiple issues via JQL:
 node ./scripts/run.mjs --jql="project = RFW AND updated >= -7d order by updated DESC"
 ```
 
+Dry-run (no Jira writes):
+
+```bash
+node ./scripts/run.mjs --issue=RFW-1234 --dry-run=true
+```
+
 ### Tips for best results
 
 - Put the **Figma link** in the Jira description (or summary).
@@ -76,6 +92,7 @@ node ./scripts/run.mjs --jql="project = RFW AND updated >= -7d order by updated 
 ## Outputs
 
 - Writes a markdown report to `reports/design-handoff.md`
+- Writes SVG “snapshots” to `reports/` (embedded in the markdown report)
 - Posts a Jira comment to each processed issue
 
 ## GitHub Actions
@@ -94,6 +111,10 @@ Repo → Settings → Secrets and variables → Actions → Secrets:
 - `FIGMA_TOKEN`
 - (optional) `CONFLUENCE_HANDOFF_PAGE_URL`
 - (optional) `DEFAULT_JQL` (used when you run without providing an input)
+- (optional) `FIGMA_BRAND_FILE_KEYS`
+- (optional) `SLACK_WEBHOOK_URL`
+- (optional) `TEAMS_WEBHOOK_URL`
+- (optional) `WRITE_BACK`
 
 ### Run it from Actions
 
@@ -105,6 +126,7 @@ Repo → Settings → Secrets and variables → Actions → Secrets:
 - **No Figma link found**: ensure the Jira ticket contains a full `https://www.figma.com/design/...` URL.
 - **No variants detected**: your node may not be a Component Set, or variant naming is not using `key=value`.
 - **AC not detected**: add a header like “Acceptance Criteria” in the description.
+- **Tool inserted a checklist**: this happens when `WRITE_BACK=true` and the ticket didn’t already contain the checklist marker.
 - **Permission errors**: verify your Jira and Figma tokens have access to the project/file.
 
 

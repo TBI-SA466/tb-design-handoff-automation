@@ -18,12 +18,13 @@ async function main() {
 
   const issueKey = args.issue;
   const jql = args.jql;
+  const dryRun = String(args['dry-run'] || '').toLowerCase() === 'true';
 
   if (!issueKey && !jql && !process.env.DEFAULT_JQL) {
     throw new Error('Provide --issue=RFW-123 or --jql="..." or set DEFAULT_JQL in env');
   }
 
-  await runDesignHandoff({ outDir, issueKey, jql });
+  await runDesignHandoff({ outDir, issueKey, jql, dryRun });
 }
 
 main().catch((e) => {

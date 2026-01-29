@@ -48,4 +48,26 @@ export async function jiraAddComment(key, commentText) {
   });
 }
 
+export async function jiraAddCommentAdf(key, adf) {
+  const url = `${base()}/rest/api/3/issue/${key}/comment`;
+  return httpJson(url, {
+    method: 'POST',
+    headers: { ...authHeader(), 'content-type': 'application/json' },
+    body: JSON.stringify({ body: adf }),
+  });
+}
+
+export async function jiraUpdateIssueDescription(key, descriptionAdf) {
+  const url = `${base()}/rest/api/3/issue/${key}`;
+  return httpJson(url, {
+    method: 'PUT',
+    headers: { ...authHeader(), 'content-type': 'application/json' },
+    body: JSON.stringify({
+      fields: {
+        description: descriptionAdf,
+      },
+    }),
+  });
+}
+
 

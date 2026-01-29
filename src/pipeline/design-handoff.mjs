@@ -1,9 +1,14 @@
+import fs from 'node:fs';
 import path from 'node:path';
-import { jiraAddComment, jiraGetIssue, jiraSearchJql } from '../connectors/jira.mjs';
+import { jiraAddCommentAdf, jiraGetIssue, jiraSearchJql, jiraUpdateIssueDescription } from '../connectors/jira.mjs';
 import { figmaGetNodes } from '../connectors/figma.mjs';
 import { adfToPlainText } from '../lib/adf.mjs';
 import { extractUrls, parseFigmaDesignUrl } from '../lib/links.mjs';
 import { writeReport } from '../report/markdown.mjs';
+import { checkAccessibilityRequirements } from '../lib/a11y.mjs';
+import { notifyIfConfigured } from '../lib/notify.mjs';
+import { parseBrandFileKeyMap, brandForFileKey } from '../lib/brand.mjs';
+import { adfDoc, adfHeading, adfParagraph, adfBulletList, appendChecklistSection } from '../lib/jira-adf-build.mjs';
 
 function parseVariantPropsFromName(name) {
   // Common Figma conventions:
@@ -127,6 +132,9 @@ export async function runDesignHandoff({ outDir, issueKey, jql }) {
   }
 
   const reportRows = [];
+  const warningsCountByIssue = new Map();
+  const brandMap = parseBrandFileKeyMap(process.env.FIGMA_BRAND_FILE_KEYS);
+  const writeBack = String(process.env.WRITE_BACK ?? 'true').toLowerCase() !== 'false';
 
   for (const issue of issues) {
     const key = issue.key;
@@ -135,52 +143,170 @@ export async function runDesignHandoff({ outDir, issueKey, jql }) {
     const textBlob = `${summary}\n${descPlain}`;
 
     const urls = extractUrls(textBlob);
-    const figmaLinks = urls.map(parseFigmaDesignUrl).filter(Boolean);
+    const figmaLinksAll = urls.map(parseFigmaDesignUrl).filter(Boolean);
+    const uniqueFigma = new Map(); // `${fileKey}:${nodeId}` -> {fileKey,nodeId}
+    for (const f of figmaLinksAll) uniqueFigma.set(`${f.fileKey}:${f.nodeId}`, f);
+    const figmaLinks = [...uniqueFigma.values()];
 
     if (!figmaLinks.length) {
       reportRows.push(`| ${key} | no figma link | — |`);
       continue;
     }
 
-    // For v1: use the first Figma link as the primary node.
-    const primary = figmaLinks[0];
-    const figmaRes = await figmaGetNodes({ fileKey: primary.fileKey, nodeIds: [primary.nodeId] });
-    const node = figmaRes?.nodes?.[primary.nodeId]?.document;
+    // Fetch all referenced nodes grouped by fileKey (multi-file support).
+    const byFile = new Map(); // fileKey -> nodeIds[]
+    for (const f of figmaLinks) {
+      if (!byFile.has(f.fileKey)) byFile.set(f.fileKey, []);
+      byFile.get(f.fileKey).push(f.nodeId);
+    }
 
-    const variants = node ? collectVariantsFromNode(node) : [];
-    const figmaSummary = summarizeVariantProperties(variants);
+    const nodeSummaries = []; // {brand,fileKey,nodeId,nodeName,type,figmaSummary}
+    for (const [fileKey, nodeIds] of byFile.entries()) {
+      const res = await figmaGetNodes({ fileKey, nodeIds });
+      for (const nodeId of nodeIds) {
+        const node = res?.nodes?.[nodeId]?.document;
+        const variants = node ? collectVariantsFromNode(node) : [];
+        const figmaSummary = summarizeVariantProperties(variants);
+        const brand = brandForFileKey(fileKey, brandMap);
+        nodeSummaries.push({
+          brand,
+          fileKey,
+          nodeId,
+          nodeName: node?.name || '',
+          nodeType: node?.type || '',
+          figmaSummary,
+        });
+      }
+    }
+
+    // Conflict detection
+    const warnings = [];
+    if (figmaLinksAll.length > figmaLinks.length) {
+      warnings.push(`Duplicate Figma links detected (${figmaLinksAll.length} total, ${figmaLinks.length} unique).`);
+    }
+    if (byFile.size > 1) {
+      warnings.push(`Multiple Figma files referenced in the same ticket (files: ${[...byFile.keys()].join(', ')}).`);
+    }
+    const uniqueNodeNames = [...new Set(nodeSummaries.map((n) => n.nodeName).filter(Boolean))];
+    if (uniqueNodeNames.length > 1) {
+      warnings.push(`Multiple different Figma nodes referenced (names: ${uniqueNodeNames.slice(0, 5).join(' | ')}).`);
+    }
+
+    // Choose a "primary" summary (first node) for AC comparison, but keep all for reporting.
+    const primary = nodeSummaries[0];
+    const primarySummary = primary?.figmaSummary || {};
 
     const acText = findAcceptanceCriteriaText(descPlain);
-    const { figmaMissingInAc, acMissingInFigma } = diffStates({ acText, figmaSummary });
+    const { figmaMissingInAc, acMissingInFigma } = diffStates({ acText, figmaSummary: primarySummary });
+    const a11y = checkAccessibilityRequirements(acText || descPlain);
+    if (a11y.missing.length) {
+      warnings.push(`Missing accessibility requirements in AC: ${a11y.missing.map((m) => m.key).join(', ')}`);
+    }
+
+    // Multi-brand diffs: compare property/value sets across brands if multiple brands present.
+    const byBrand = new Map(); // brand -> merged summary
+    for (const n of nodeSummaries) {
+      const b = n.brand || 'unknown';
+      if (!byBrand.has(b)) byBrand.set(b, {});
+      const agg = byBrand.get(b);
+      for (const [k, vals] of Object.entries(n.figmaSummary || {})) {
+        if (!agg[k]) agg[k] = new Set();
+        for (const v of vals) agg[k].add(v);
+      }
+    }
+    const brandDiffs = [];
+    if (byBrand.size > 1) {
+      const allProps = new Set();
+      for (const agg of byBrand.values()) for (const k of Object.keys(agg)) allProps.add(k);
+      for (const prop of [...allProps].sort()) {
+        const rows = [];
+        for (const [b, agg] of byBrand.entries()) {
+          const vals = agg[prop] ? [...agg[prop]].sort() : [];
+          rows.push(`${b}=[${vals.join(', ')}]`);
+        }
+        const normalized = new Set(rows.map((r) => r.replace(/^[^=]+=/, '')));
+        if (normalized.size > 1) brandDiffs.push(`${prop}: ${rows.join(' | ')}`);
+      }
+      if (brandDiffs.length) warnings.push(`Brand diffs detected (${brandDiffs.length}).`);
+    }
+
+    // Checklist auto-insert (idempotent, only if WRITE_BACK and not dry-run)
+    let checklistInserted = false;
+    const checklistMarker = '<!-- design-handoff-checklist -->';
+    const checklistTitle = 'Design Handoff Checklist';
+    const checklistItems = [
+      'Figma link present (component node / component set)',
+      'States/variants listed (Default/Disabled/Error/Unavailable/etc.)',
+      'Responsive behavior defined (mobile/desktop)',
+      'Accessibility: keyboard, focus, ARIA, error messaging, hit area',
+      'QA notes / test plan included',
+    ];
+    const existingAdf = issue.fields?.description;
+    const { updated: willInsert, adf: updatedAdf } = appendChecklistSection(existingAdf, {
+      markerText: checklistMarker,
+      title: checklistTitle,
+      items: checklistItems,
+    });
+    if (willInsert && writeBack && !dryRun) {
+      await jiraUpdateIssueDescription(key, updatedAdf);
+      checklistInserted = true;
+      warnings.push('Inserted Design Handoff Checklist into Jira description.');
+    }
 
     const confluenceLink = process.env.CONFLUENCE_HANDOFF_PAGE_URL;
-    const commentLines = [];
-    commentLines.push(`Design handoff automation summary`);
-    commentLines.push(``);
-    commentLines.push(`Jira: ${key} - ${summary}`);
-    commentLines.push(`Figma: https://www.figma.com/design/${primary.fileKey}?node-id=${primary.nodeId.replace(':', '-')}`);
-    if (confluenceLink) commentLines.push(`Confluence handoff: ${confluenceLink}`);
-    commentLines.push(``);
-    commentLines.push(`Extracted variant properties (best-effort):`);
-    for (const [k, vals] of Object.entries(figmaSummary)) {
-      commentLines.push(`- ${k}: ${vals.join(', ')}`);
-    }
-    if (!Object.keys(figmaSummary).length) commentLines.push(`- (none detected; node may not be a component set/variant)`);
-    commentLines.push(``);
-    if (acText) {
-      commentLines.push(`Acceptance Criteria section detected ✅`);
-    } else {
-      commentLines.push(`Acceptance Criteria section detected ❌ (could not find "Acceptance Criteria" header)`);
-    }
-    commentLines.push(``);
-    commentLines.push(`Discrepancies (heuristic):`);
-    commentLines.push(`- Values in Figma not mentioned in AC: ${figmaMissingInAc.length ? figmaMissingInAc.join(', ') : 'None'}`);
-    commentLines.push(`- Values mentioned in AC but not found in Figma: ${acMissingInFigma.length ? acMissingInFigma.join(', ') : 'None'}`);
+    const jiraLink = process.env.JIRA_BASE_URL ? `${process.env.JIRA_BASE_URL.replace(/\/+$/, '')}/browse/${key}` : key;
 
-    await jiraAddComment(key, commentLines.join('\n'));
+    const adf = adfDoc([
+      adfHeading('Design handoff automation summary', 2),
+      adfParagraph(`Jira: ${key} - ${summary}`),
+      ...nodeSummaries.slice(0, 5).flatMap((n, idx) => [
+        adfParagraph(`Figma(${idx + 1}): https://www.figma.com/design/${n.fileKey}?node-id=${n.nodeId.replace(':', '-')}`),
+      ]),
+      ...(confluenceLink ? [adfParagraph(`Confluence handoff: ${confluenceLink}`)] : []),
+      adfHeading('Extracted variant properties (best-effort)', 3),
+      ...(Object.keys(primarySummary).length
+        ? Object.entries(primarySummary).map(([k, vals]) => adfParagraph(`${k}: ${vals.join(', ')}`))
+        : [adfParagraph('(none detected; node may not be a component set/variant)')]),
+      adfHeading('Discrepancies (heuristic)', 3),
+      adfBulletList([
+        `Values in Figma not mentioned in AC: ${figmaMissingInAc.length ? figmaMissingInAc.join(', ') : 'None'}`,
+        `Values mentioned in AC but not found in Figma: ${acMissingInFigma.length ? acMissingInFigma.join(', ') : 'None'}`,
+      ]),
+      adfHeading('Accessibility checks (AC)', 3),
+      ...(a11y.missing.length
+        ? [adfParagraph(`Missing: ${a11y.missing.map((m) => m.key).join(', ')}`)]
+        : [adfParagraph('No missing accessibility requirements detected (heuristic).')]),
+      ...(warnings.length ? [adfHeading('Warnings', 3), adfBulletList(warnings)] : []),
+      adfParagraph('<!-- design-handoff-bot -->'),
+    ]);
 
-    reportRows.push(`| ${key} | ${primary.fileKey}:${primary.nodeId} | ${Object.keys(figmaSummary).length} props |`);
+    warningsCountByIssue.set(key, warnings.length);
+
+    if (writeBack && !dryRun) {
+      await jiraAddCommentAdf(key, adf);
+    }
+
+    if (warnings.length) {
+      await notifyIfConfigured({
+        title: `Design handoff drift detected: ${key}`,
+        text: warnings.slice(0, 8).map((w) => `- ${w}`).join('\n'),
+        url: jiraLink,
+      });
+    }
+
+    reportRows.push(`| ${key} | ${nodeSummaries.map((n) => `${n.brand}:${n.fileKey}:${n.nodeId}`).join('<br/>')} | ${Object.keys(primarySummary).length} props | ${warnings.length} | ${checklistInserted ? 'Yes' : 'No'} |`);
+
+    // Generate a per-issue SVG “snapshot” and link it in the report for quick reading.
+    const svgName = `handoff.${key}.svg`;
+    fs.writeFileSync(path.join(outDir, svgName), buildHandoffSvg({ key, warnings: warnings.length, brands: [...byBrand.keys()], figmaLinks: figmaLinks.length }), 'utf8');
   }
+
+  const totals = {
+    issues: issues.length,
+    warnings: [...warningsCountByIssue.values()].reduce((a, b) => a + b, 0),
+  };
+  const summarySvg = 'design-handoff.summary.svg';
+  fs.writeFileSync(path.join(outDir, summarySvg), buildSummarySvg(totals), 'utf8');
 
   writeReport({
     outFile: path.join(outDir, 'design-handoff.md'),
@@ -191,25 +317,75 @@ export async function runDesignHandoff({ outDir, issueKey, jql }) {
         body: [
           `- Issues processed: ${issues.length}`,
           `- Mode: ${issueKey ? `single issue (${issueKey})` : 'JQL search'}`,
+          `- Write-back (Jira comment/checklist): ${writeBack && !dryRun ? 'enabled' : 'disabled (dry-run or WRITE_BACK=false)'}`,
         ].join('\n'),
+      },
+      {
+        title: 'Snapshot',
+        body: `![Run summary](${summarySvg})`,
       },
       {
         title: 'Results',
         body: [
-          '| issue | figma | extracted |',
-          '|---|---|---|',
+          '| issue | figma (brand:file:node) | extracted | warnings | checklist inserted |',
+          '|---|---|---:|---:|---|',
           ...reportRows,
         ].join('\n'),
       },
       {
         title: 'Notes',
         body: [
-          '- This version uses best-effort parsing of Figma node/component names.',
-          '- Next upgrade: enumerate all variants from a Component Set and write a richer “state matrix”.',
+          '- Multi-link conflict detection is best-effort; prefer one canonical Figma node per ticket (or per brand).',
+          '- Accessibility checks are heuristic and should be treated as “missing requirements prompts”, not definitive compliance.',
         ].join('\n'),
       },
     ],
   });
 }
 
+function buildSummarySvg({ issues, warnings }) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="220" viewBox="0 0 900 220">
+  <defs>
+    <style>
+      .bg{fill:#0b1020}
+      .card{fill:#121a33;stroke:#2a3a6a;stroke-width:2;rx:16;ry:16}
+      .h{fill:#e8eeff;font:700 18px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .t{fill:#c6d2ff;font:600 14px ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+      .barBg{fill:#1a2550}
+      .bar{fill:#6f8bff}
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="900" height="220"/>
+  <rect class="card" x="20" y="18" width="860" height="184" rx="16" ry="16"/>
+  <text class="h" x="44" y="56">Design handoff run summary</text>
+  <text class="t" x="44" y="90">Issues processed: ${issues}</text>
+  <text class="t" x="44" y="116">Warnings found: ${warnings}</text>
+  <rect class="barBg" x="44" y="140" width="560" height="18" rx="9" ry="9"/>
+  <rect class="bar" x="44" y="140" width="${issues ? Math.round((560 * Math.min(warnings, issues)) / issues) : 0}" height="18" rx="9" ry="9"/>
+  <text class="t" x="616" y="154">warnings density</text>
+</svg>`;
+}
+
+function buildHandoffSvg({ key, warnings, brands, figmaLinks }) {
+  const brandText = brands.length ? brands.join(', ') : 'unknown';
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="220" viewBox="0 0 900 220">
+  <defs>
+    <style>
+      .bg{fill:#0b1020}
+      .card{fill:#121a33;stroke:#2a3a6a;stroke-width:2;rx:16;ry:16}
+      .h{fill:#e8eeff;font:700 18px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .t{fill:#c6d2ff;font:600 14px ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+      .warn{fill:#ffcc66;font:800 14px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="900" height="220"/>
+  <rect class="card" x="20" y="18" width="860" height="184" rx="16" ry="16"/>
+  <text class="h" x="44" y="56">${key} handoff snapshot</text>
+  <text class="t" x="44" y="94">Figma links: ${figmaLinks}</text>
+  <text class="t" x="44" y="120">Brands: ${brandText}</text>
+  <text class="warn" x="44" y="152">Warnings: ${warnings}</text>
+</svg>`;
+}
 

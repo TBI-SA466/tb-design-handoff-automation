@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640">
+  <defs>
+    <style>
+      .bg{fill:#0b1020}
+      .panel{fill:#121a33;stroke:#2a3a6a;stroke-width:2;rx:16;ry:16}
+      .title{fill:#e8eeff;font:700 28px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .muted{fill:#9fb0ff;font:500 16px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .mono{fill:#c6d2ff;font:600 15px ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+      .warn{fill:#ffcc66;font:800 15px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .ok{fill:#52d18b;font:800 15px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1200" height="640"/>
+  <text class="title" x="44" y="64">Example generated report (snapshot)</text>
+  <text class="muted" x="44" y="94">The real run generates SVG snapshots into reports/ and embeds them in markdown.</text>
+
+  <rect class="panel" x="44" y="120" width="1112" height="476" rx="16" ry="16"/>
+  <text class="mono" x="80" y="170">Issues processed: 25</text>
+  <text class="mono" x="80" y="196">Write-back: enabled (Jira comment + checklist)</text>
+  <text class="warn" x="80" y="236">Warnings detected: 12</text>
+
+  <text class="mono" x="80" y="286">RFW-918</text>
+  <text class="warn" x="180" y="286">WARN</text>
+  <text class="mono" x="240" y="286">Multiple Figma links; missing a11y: aria, hitarea</text>
+
+  <text class="mono" x="80" y="320">RFW-920</text>
+  <text class="ok" x="180" y="320">OK</text>
+  <text class="mono" x="240" y="320">Single Figma node; AC matches states</text>
+
+  <text class="mono" x="80" y="372">Brand diffs</text>
+  <text class="warn" x="180" y="372">WARN</text>
+  <text class="mono" x="240" y="372">State differs between tmw and jab</text>
+
+  <text class="muted" x="80" y="560">Tip: configure FIGMA_BRAND_FILE_KEYS to enable brand comparisons.</text>
+</svg>
+
+
