@@ -16,7 +16,7 @@ function authHeader() {
 
 export async function jiraGetIssue(key) {
   const url = new URL(`${base()}/rest/api/3/issue/${key}`);
-  url.searchParams.set('fields', 'summary,description,status');
+  url.searchParams.set('fields', 'summary,description,status,labels,attachment');
   return httpJson(url.toString(), { headers: authHeader() });
 }
 
@@ -68,6 +68,45 @@ export async function jiraUpdateIssueDescription(key, descriptionAdf) {
       },
     }),
   });
+}
+
+export async function jiraUpdateIssueLabels(key, labels) {
+  const url = `${base()}/rest/api/3/issue/${key}`;
+  return httpJson(url, {
+    method: 'PUT',
+    headers: { ...authHeader(), 'content-type': 'application/json' },
+    body: JSON.stringify({
+      fields: {
+        labels,
+      },
+    }),
+  });
+}
+
+export async function jiraAddAttachments(key, files) {
+  // Jira attachments endpoint requires multipart/form-data and:
+  // - X-Atlassian-Token: no-check
+  const url = `${base()}/rest/api/3/issue/${key}/attachments`;
+  const form = new FormData();
+  for (const f of files) {
+    // f: { filename, mimeType, buffer }
+    const file = new File([f.buffer], f.filename, { type: f.mimeType || 'application/octet-stream' });
+    form.append('file', file, f.filename);
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      ...authHeader(),
+      'X-Atlassian-Token': 'no-check',
+    },
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`POST ${url} -> ${res.status}: ${text}`);
+  }
+  return await res.json();
 }
 
 

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { jiraAddCommentAdf, jiraGetIssue, jiraSearchJql, jiraUpdateIssueDescription } from '../connectors/jira.mjs';
+import { jiraAddAttachments, jiraAddCommentAdf, jiraGetIssue, jiraSearchJql, jiraUpdateIssueDescription, jiraUpdateIssueLabels } from '../connectors/jira.mjs';
 import { figmaGetNodes } from '../connectors/figma.mjs';
 import { adfToPlainText } from '../lib/adf.mjs';
 import { extractUrls, parseFigmaDesignUrl } from '../lib/links.mjs';
@@ -9,6 +9,7 @@ import { checkAccessibilityRequirements } from '../lib/a11y.mjs';
 import { notifyIfConfigured } from '../lib/notify.mjs';
 import { parseBrandFileKeyMap, brandForFileKey } from '../lib/brand.mjs';
 import { adfDoc, adfHeading, adfParagraph, adfBulletList, appendChecklistSection } from '../lib/jira-adf-build.mjs';
+import { applyExclusiveDesignHandoffLabels, computeDesignHandoffLabels } from '../lib/jira-labels.mjs';
 
 function parseVariantPropsFromName(name) {
   // Common Figma conventions:
@@ -121,20 +122,25 @@ function diffStates({ acText, figmaSummary }) {
   return { figmaMissingInAc, acMissingInFigma };
 }
 
-export async function runDesignHandoff({ outDir, issueKey, jql }) {
+export async function runDesignHandoff({ outDir, issueKey, jql, dryRun = false }) {
   const issues = [];
   if (issueKey) {
     issues.push(await jiraGetIssue(issueKey));
   } else {
     const query = jql || process.env.DEFAULT_JQL || 'order by updated DESC';
     const res = await jiraSearchJql(query, { maxResults: 25 });
-    issues.push(...(res.issues || []));
+    // Pull full issue details so we can read labels/attachments safely.
+    for (const i of res.issues || []) {
+      issues.push(await jiraGetIssue(i.key));
+    }
   }
 
   const reportRows = [];
   const warningsCountByIssue = new Map();
   const brandMap = parseBrandFileKeyMap(process.env.FIGMA_BRAND_FILE_KEYS);
   const writeBack = String(process.env.WRITE_BACK ?? 'true').toLowerCase() !== 'false';
+  const labelAutomation = String(process.env.JIRA_LABEL_AUTOMATION ?? 'true').toLowerCase() !== 'false';
+  const attachEvidence = String(process.env.JIRA_ATTACH_EVIDENCE ?? 'true').toLowerCase() !== 'false';
 
   for (const issue of issues) {
     const key = issue.key;
@@ -286,6 +292,14 @@ export async function runDesignHandoff({ outDir, issueKey, jql }) {
       await jiraAddCommentAdf(key, adf);
     }
 
+    // Jira label automation (exclusive family labels)
+    const hasAc = Boolean(acText);
+    if (writeBack && !dryRun && labelAutomation) {
+      const desired = computeDesignHandoffLabels({ hasAc, warningsCount: warnings.length }).primary;
+      const next = applyExclusiveDesignHandoffLabels(issue.fields?.labels || [], desired);
+      await jiraUpdateIssueLabels(key, next);
+    }
+
     if (warnings.length) {
       await notifyIfConfigured({
         title: `Design handoff drift detected: ${key}`,
@@ -299,6 +313,44 @@ export async function runDesignHandoff({ outDir, issueKey, jql }) {
     // Generate a per-issue SVG “snapshot” and link it in the report for quick reading.
     const svgName = `handoff.${key}.svg`;
     fs.writeFileSync(path.join(outDir, svgName), buildHandoffSvg({ key, warnings: warnings.length, brands: [...byBrand.keys()], figmaLinks: figmaLinks.length }), 'utf8');
+
+    // Evidence attachments to Jira (idempotent by filename)
+    if (writeBack && !dryRun && attachEvidence) {
+      const existing = new Set((issue.fields?.attachment || []).map((a) => a.filename));
+      const filesToUpload = [];
+
+      // Per-issue markdown summary (small + ticket-specific)
+      const issueMdName = `design-handoff.${key}.md`;
+      const issueMdPath = path.join(outDir, issueMdName);
+      fs.writeFileSync(
+        issueMdPath,
+        [
+          `# Design handoff summary: ${key}`,
+          '',
+          `Jira: ${jiraLink}`,
+          '',
+          `## Warnings (${warnings.length})`,
+          warnings.length ? warnings.map((w) => `- ${w}`).join('\n') : '- None',
+          '',
+          `## Figma links`,
+          figmaLinks.map((f) => `- https://www.figma.com/design/${f.fileKey}?node-id=${f.nodeId.replace(':', '-')}`).join('\n'),
+          '',
+        ].join('\n'),
+        'utf8'
+      );
+
+      if (!existing.has(issueMdName)) {
+        filesToUpload.push({ filename: issueMdName, mimeType: 'text/markdown', buffer: fs.readFileSync(issueMdPath) });
+      }
+      if (!existing.has(svgName)) {
+        filesToUpload.push({ filename: svgName, mimeType: 'image/svg+xml', buffer: fs.readFileSync(path.join(outDir, svgName)) });
+      }
+
+      // Upload in one request (Jira supports multiple files per call)
+      if (filesToUpload.length) {
+        await jiraAddAttachments(key, filesToUpload);
+      }
+    }
   }
 
   const totals = {

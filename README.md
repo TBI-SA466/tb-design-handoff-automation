@@ -12,6 +12,7 @@ Automates **Figma ↔ Jira “design handoff”**:
   - Optionally includes a **Confluence handoff page link**
   - Sends **Slack/Teams notifications** when drift/warnings are detected
   - Optionally **auto-inserts a Design Handoff Checklist** into the Jira description if missing
+  - Optionally **adds Jira labels** and **uploads evidence attachments** to the Jira ticket
 
 ![Design handoff flow](assets/handoff-flow.svg)
 
@@ -31,6 +32,11 @@ Automates **Figma ↔ Jira “design handoff”**:
 - Handles **multiple Figma links** per ticket (detects duplicates/conflicts)
 - Supports **multi-file / multi-brand** diffs (TMW/JAB/MSP) when configured
 - Runs **accessibility requirement checks** against AC text (heuristic)
+- Automates Jira labels:
+  - `design-handoff-ok`
+  - `design-handoff-warn`
+  - `design-handoff-missing-ac`
+- Uploads evidence attachments to Jira (optional + idempotent)
 - Posts a Jira comment summarizing:
   - Figma links found
   - Extracted variant properties + values
@@ -39,6 +45,8 @@ Automates **Figma ↔ Jira “design handoff”**:
 ![Sample Jira comment](assets/sample-jira-comment.svg)
 
 ![Sample report snapshot](assets/sample-report-snapshot.svg)
+
+![Sample Jira labels + attachments](assets/sample-jira-labels-attachments.svg)
 
 ## What it does NOT do yet (so expectations are clear)
 
@@ -62,6 +70,8 @@ cp config/example.env .env
 - **Optional**: `FIGMA_BRAND_FILE_KEYS` for multi-brand diffs (e.g. `tmw=<fileKey>,jab=<fileKey>,msp=<fileKey>`)
 - **Optional**: `SLACK_WEBHOOK_URL` and/or `TEAMS_WEBHOOK_URL` for notifications
 - **Optional**: `WRITE_BACK` (`true`/`false`) to control whether the tool modifies Jira (comment + checklist)
+- **Optional**: `JIRA_LABEL_AUTOMATION` (`true`/`false`)
+- **Optional**: `JIRA_ATTACH_EVIDENCE` (`true`/`false`)
 
 ## Run (local)
 
@@ -94,6 +104,10 @@ node ./scripts/run.mjs --issue=RFW-1234 --dry-run=true
 - Writes a markdown report to `reports/design-handoff.md`
 - Writes SVG “snapshots” to `reports/` (embedded in the markdown report)
 - Posts a Jira comment to each processed issue
+- Updates Jira labels (optional)
+- Uploads attachments (optional):
+  - `design-handoff.<ISSUE>.md`
+  - `handoff.<ISSUE>.svg`
 
 ## GitHub Actions
 

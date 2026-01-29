@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520">
+  <defs>
+    <style>
+      .bg{fill:#0b1020}
+      .panel{fill:#121a33;stroke:#2a3a6a;stroke-width:2;rx:16;ry:16}
+      .title{fill:#e8eeff;font:700 28px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .muted{fill:#9fb0ff;font:500 16px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .pill{fill:#1a2550;stroke:#3a54a8;stroke-width:1.5;rx:999;ry:999}
+      .pillText{fill:#dbe4ff;font:700 14px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+      .mono{fill:#c6d2ff;font:600 15px ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+      .ok{fill:#52d18b}
+      .warn{fill:#ffcc66}
+      .bad{fill:#ff6b6b}
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1200" height="520"/>
+  <text class="title" x="44" y="64">Jira labels + evidence attachments (what you’ll see)</text>
+  <text class="muted" x="44" y="94">Illustration: the automation adds one exclusive label and attaches evidence files to the ticket.</text>
+
+  <rect class="panel" x="44" y="120" width="1112" height="352" rx="16" ry="16"/>
+
+  <text class="mono" x="80" y="170">Labels</text>
+  <rect class="pill" x="80" y="190" width="210" height="34"/>
+  <circle class="ok" cx="102" cy="207" r="6"/>
+  <text class="pillText" x="118" y="212">design-handoff-ok</text>
+
+  <rect class="pill" x="300" y="190" width="240" height="34"/>
+  <circle class="warn" cx="322" cy="207" r="6"/>
+  <text class="pillText" x="338" y="212">design-handoff-warn</text>
+
+  <rect class="pill" x="550" y="190" width="290" height="34"/>
+  <circle class="bad" cx="572" cy="207" r="6"/>
+  <text class="pillText" x="588" y="212">design-handoff-missing-ac</text>
+
+  <text class="mono" x="80" y="280">Attachments</text>
+  <text class="mono" x="100" y="314">- design-handoff.RFW-918.md</text>
+  <text class="mono" x="100" y="342">- handoff.RFW-918.svg</text>
+
+  <text class="muted" x="80" y="412">Idempotent: if the attachment filename already exists on the ticket, it will not upload again.</text>
+</svg>
+
+
