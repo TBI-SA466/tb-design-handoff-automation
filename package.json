@@ -1,0 +1,11 @@
+{
+  "name": "tb-design-handoff-automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "run": "node ./scripts/run.mjs"
+  }
+}
+
+

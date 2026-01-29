@@ -1,0 +1,58 @@
+name: Design Handoff (Figma ↔ Jira)
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Single Jira issue key (e.g. RFW-1234)"
+        required: false
+        type: string
+      jql:
+        description: "JQL to process multiple issues"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 14 * * 1-5" # weekdays
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tb-design-handoff-automation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+          CONFLUENCE_HANDOFF_PAGE_URL: ${{ secrets.CONFLUENCE_HANDOFF_PAGE_URL }}
+          DEFAULT_JQL: ${{ secrets.DEFAULT_JQL }}
+        run: |
+          ISSUE="${{ inputs.issue }}"
+          JQL="${{ inputs.jql }}"
+          if [ -n "$ISSUE" ]; then
+            node ./scripts/run.mjs --issue="$ISSUE"
+          elif [ -n "$JQL" ]; then
+            node ./scripts/run.mjs --jql="$JQL"
+          else
+            node ./scripts/run.mjs
+          fi
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-handoff-reports
+          path: tb-design-handoff-automation/reports/**
+
+

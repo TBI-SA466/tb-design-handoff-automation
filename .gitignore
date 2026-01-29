@@ -1,0 +1,7 @@
+.env
+node_modules/
+reports/
+!.gitkeep
+.DS_Store
+
+
