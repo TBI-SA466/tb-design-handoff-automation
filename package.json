@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "run": "node ./scripts/run.mjs"
+    "run": "node ./scripts/run.mjs",
+    "slides:export": "npx @marp-team/marp-cli@latest docs/design-handoff-presentation.md --pptx -o docs/design-handoff-presentation.pptx --no-stdin"
   }
 }
 

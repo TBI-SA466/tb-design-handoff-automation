@@ -5,6 +5,7 @@ import { figmaGetNodes } from '../connectors/figma.mjs';
 import { adfToPlainText } from '../lib/adf.mjs';
 import { extractUrls, parseFigmaDesignUrl } from '../lib/links.mjs';
 import { writeReport } from '../report/markdown.mjs';
+import { buildHandoffHtml } from '../report/handoff-html.mjs';
 import { checkAccessibilityRequirements } from '../lib/a11y.mjs';
 import { notifyIfConfigured } from '../lib/notify.mjs';
 import { parseBrandFileKeyMap, brandForFileKey } from '../lib/brand.mjs';
@@ -122,10 +123,12 @@ function diffStates({ acText, figmaSummary }) {
   return { figmaMissingInAc, acMissingInFigma };
 }
 
-export async function runDesignHandoff({ outDir, issueKey, jql, dryRun = false }) {
+export async function runDesignHandoff({ outDir, issueKeys, jql, dryRun = false }) {
   const issues = [];
-  if (issueKey) {
-    issues.push(await jiraGetIssue(issueKey));
+  if (issueKeys?.length) {
+    for (const key of issueKeys) {
+      issues.push(await jiraGetIssue(key));
+    }
   } else {
     const query = jql || process.env.DEFAULT_JQL || 'order by updated DESC';
     const res = await jiraSearchJql(query, { maxResults: 25 });
@@ -137,6 +140,8 @@ export async function runDesignHandoff({ outDir, issueKey, jql, dryRun = false }
 
   const reportRows = [];
   const warningsCountByIssue = new Map();
+  const dryRunComments = []; // When dryRun: collect would-be Jira comment text per issue
+  const dryRunResults = []; // When dryRun: per-ticket results and mismatches for text file
   const brandMap = parseBrandFileKeyMap(process.env.FIGMA_BRAND_FILE_KEYS);
   const writeBack = String(process.env.WRITE_BACK ?? 'true').toLowerCase() !== 'false';
   const labelAutomation = String(process.env.JIRA_LABEL_AUTOMATION ?? 'true').toLowerCase() !== 'false';
@@ -156,6 +161,9 @@ export async function runDesignHandoff({ outDir, issueKey, jql, dryRun = false }
 
     if (!figmaLinks.length) {
       reportRows.push(`| ${key} | no figma link | — |`);
+      if (dryRun) {
+        dryRunResults.push({ key, summary, noFigmaLink: true, warnings: [], figmaMissingInAc: [], acMissingInFigma: [], a11yMissing: [], extractedProps: {} });
+      }
       continue;
     }
 
@@ -288,6 +296,20 @@ export async function runDesignHandoff({ outDir, issueKey, jql, dryRun = false }
 
     warningsCountByIssue.set(key, warnings.length);
 
+    if (dryRun) {
+      dryRunComments.push({ key, text: adfToPlainText(adf) });
+      dryRunResults.push({
+        key,
+        summary,
+        figmaLinks: figmaLinks.map((f) => `https://www.figma.com/design/${f.fileKey}?node-id=${f.nodeId.replace(':', '-')}`),
+        extractedProps: primarySummary,
+        figmaMissingInAc,
+        acMissingInFigma,
+        a11yMissing: a11y.missing.map((m) => m.key),
+        warnings,
+        noFigmaLink: false,
+      });
+    }
     if (writeBack && !dryRun) {
       await jiraAddCommentAdf(key, adf);
     }
@@ -360,6 +382,67 @@ export async function runDesignHandoff({ outDir, issueKey, jql, dryRun = false }
   const summarySvg = 'design-handoff.summary.svg';
   fs.writeFileSync(path.join(outDir, summarySvg), buildSummarySvg(totals), 'utf8');
 
+  if (dryRun && dryRunComments.length > 0) {
+    const commentsPath = path.join(outDir, 'jira-comments.txt');
+    const commentsContent = dryRunComments
+      .map(({ key, text }) => `========== ${key} ==========\n\n${text.trim()}\n`)
+      .join('\n');
+    fs.writeFileSync(commentsPath, commentsContent, 'utf8');
+  }
+
+  if (dryRun && dryRunResults.length > 0) {
+    const resultsPath = path.join(outDir, 'dry-run-results-and-mismatches.txt');
+    const lines = [
+      'Design handoff dry-run – results and mismatches per ticket',
+      'Generated: ' + new Date().toISOString(),
+      '',
+      '================================================================================',
+      '',
+    ];
+    for (const r of dryRunResults) {
+      lines.push(`========== ${r.key} ==========`);
+      lines.push(`Summary: ${r.summary || '(none)'}`);
+      lines.push('');
+      if (r.noFigmaLink) {
+        lines.push('Figma link: none');
+        lines.push('Mismatches: N/A (no Figma link)');
+        lines.push('Warnings: N/A');
+      } else {
+        lines.push('Figma link(s):');
+        for (const url of r.figmaLinks || []) lines.push(`  - ${url}`);
+        lines.push('');
+        lines.push('Extracted variant properties (Figma):');
+        if (Object.keys(r.extractedProps || {}).length === 0) {
+          lines.push('  (none detected)');
+        } else {
+          for (const [prop, vals] of Object.entries(r.extractedProps || {})) {
+            lines.push(`  ${prop}: ${vals.join(', ')}`);
+          }
+        }
+        lines.push('');
+        lines.push('MISMATCHES – Values in Figma not mentioned in Acceptance Criteria:');
+        lines.push((r.figmaMissingInAc?.length ? r.figmaMissingInAc.join(', ') : 'None') || 'None');
+        lines.push('');
+        lines.push('MISMATCHES – Values mentioned in AC but not found in Figma:');
+        lines.push((r.acMissingInFigma?.length ? r.acMissingInFigma.join(', ') : 'None') || 'None');
+        lines.push('');
+        lines.push('Accessibility – missing in AC (heuristic):');
+        lines.push((r.a11yMissing?.length ? r.a11yMissing.join(', ') : 'None') || 'None');
+        lines.push('');
+        lines.push('Warnings:');
+        if (r.warnings?.length) for (const w of r.warnings) lines.push(`  - ${w}`);
+        else lines.push('  (none)');
+      }
+      lines.push('');
+      lines.push('--------------------------------------------------------------------------------');
+      lines.push('');
+    }
+    fs.writeFileSync(resultsPath, lines.join('\n'), 'utf8');
+    const htmlPath = path.join(outDir, 'design-handoff-report.html');
+    const jiraBaseUrl = process.env.JIRA_BASE_URL ? process.env.JIRA_BASE_URL.replace(/\/+$/, '') : 'https://tailored-prod.atlassian.net';
+    fs.writeFileSync(htmlPath, buildHandoffHtml(dryRunResults, { jiraBaseUrl }), 'utf8');
+  }
+
   writeReport({
     outFile: path.join(outDir, 'design-handoff.md'),
     title: 'Figma ↔ Jira design handoff report',
@@ -368,7 +451,7 @@ export async function runDesignHandoff({ outDir, issueKey, jql, dryRun = false }
         title: 'Summary',
         body: [
           `- Issues processed: ${issues.length}`,
-          `- Mode: ${issueKey ? `single issue (${issueKey})` : 'JQL search'}`,
+          `- Mode: ${issueKeys?.length ? `issue(s): ${issueKeys.join(', ')}` : 'JQL search'}`,
           `- Write-back (Jira comment/checklist): ${writeBack && !dryRun ? 'enabled' : 'disabled (dry-run or WRITE_BACK=false)'}`,
         ].join('\n'),
       },

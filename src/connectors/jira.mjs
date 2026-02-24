@@ -21,7 +21,7 @@ export async function jiraGetIssue(key) {
 }
 
 export async function jiraSearchJql(jql, { maxResults = 25 } = {}) {
-  const url = new URL(`${base()}/rest/api/3/search`);
+  const url = new URL(`${base()}/rest/api/3/search/jql`);
   url.searchParams.set('jql', jql);
   url.searchParams.set('maxResults', String(maxResults));
   url.searchParams.set('fields', 'summary,description,status');

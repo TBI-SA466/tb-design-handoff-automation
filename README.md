@@ -16,6 +16,10 @@ Automates **Figma ↔ Jira “design handoff”**:
 
 ![Design handoff flow](assets/handoff-flow.svg)
 
+**Detailed system description:** [docs/DESIGN-HANDOFF-SYSTEM.md](docs/DESIGN-HANDOFF-SYSTEM.md) – flow, components, variant extraction, mismatch detection, reports, and configuration.
+
+**Team presentation:** [docs/design-handoff-presentation.pptx](docs/design-handoff-presentation.pptx) – downloadable PowerPoint (idea, implementation, process). Source: [docs/design-handoff-presentation.md](docs/design-handoff-presentation.md). Regenerate with `npm run slides:export`.
+
 ## Why this is useful (benefits)
 
 - **Faster handoff**: PM/Design/Dev can see “what states exist” in Figma without manually enumerating them.
@@ -54,13 +58,33 @@ Automates **Figma ↔ Jira “design handoff”**:
 - Variant extraction is **best-effort** and depends on Figma naming conventions (e.g., `State=Default`).
 - “Designs without tickets” requires a defined Figma scope (page/component set) or a naming convention (e.g., Jira keys in node names).
 
-## Setup (local)
+## First-time setup (after cloning)
 
-Copy `config/example.env` to `.env` and fill it:
+1. **Create your config file** (the repo has no `.env`; it’s gitignored):
+   ```bash
+   cp config/example.env .env
+   ```
 
-```bash
-cp config/example.env .env
-```
+2. **Edit `.env`** and set the **required** variables:
+   - `JIRA_BASE_URL` – your Jira base URL, e.g. `https://your-company.atlassian.net` (no trailing slash).
+   - `JIRA_EMAIL` – the email you use to log in to Jira.
+   - `JIRA_API_TOKEN` – [Create an API token](https://id.atlassian.com/manage-profile/security/api-tokens) in your Atlassian account and paste it here.
+   - `FIGMA_TOKEN` – [Create a Figma personal access token](https://www.figma.com/developers/api#access-tokens) and paste it here.
+
+3. **Run the script** from the project root. The script **loads `.env` automatically**, so you don’t need to export variables:
+   ```bash
+   node ./scripts/run.mjs --issue=RFW-1234
+   ```
+   Or use dry-run to avoid writing to Jira:
+   ```bash
+   node ./scripts/run.mjs --issue=RFW-1234 --dry-run=true
+   ```
+
+If you see `JIRA_BASE_URL is required`, the script didn’t find a `.env` in the current directory. Make sure you created `.env` (step 1) and that you’re running the command from the **project root** (the folder that contains `config/` and `scripts/`).
+
+## Setup (local) – reference
+
+Copy `config/example.env` to `.env` and fill in the values. The run script loads `.env` automatically when you execute it from the project root.
 
 ### Required credentials
 
@@ -81,16 +105,23 @@ Run for a single issue:
 node ./scripts/run.mjs --issue=RFW-1234
 ```
 
+Run for multiple issues (comma-separated keys):
+
+```bash
+node ./scripts/run.mjs --issue=RFW-1234,RFW-1235,RFW-1236
+```
+
 Run for multiple issues via JQL:
 
 ```bash
 node ./scripts/run.mjs --jql="project = RFW AND updated >= -7d order by updated DESC"
 ```
 
-Dry-run (no Jira writes):
+Dry-run (no Jira writes; report and would-be comments go to `reports/design-handoff.md` and `reports/jira-comments.txt`):
 
 ```bash
 node ./scripts/run.mjs --issue=RFW-1234 --dry-run=true
+node ./scripts/run.mjs --issue=RFW-1234,RFW-1235 --dry-run=true
 ```
 
 ### Tips for best results
@@ -108,6 +139,11 @@ node ./scripts/run.mjs --issue=RFW-1234 --dry-run=true
 - Uploads attachments (optional):
   - `design-handoff.<ISSUE>.md`
   - `handoff.<ISSUE>.svg`
+
+**Dry-run only** (when `--dry-run=true`):
+- `reports/jira-comments.txt` – would-be Jira comment text per ticket
+- `reports/dry-run-results-and-mismatches.txt` – per-ticket results and mismatches
+- `reports/design-handoff-report.html` – **visual HTML report** (open in browser): Figma embeds, handoff snapshots, and colour-coded mismatches (In Figma not in AC / In AC not in Figma). Open from the `reports/` folder so images load; for Figma iframes to work, serve the folder (e.g. `npx serve reports -p 3333` then open `http://localhost:3333/design-handoff-report.html`).
 
 ## GitHub Actions
 
