@@ -28,6 +28,19 @@ export async function jiraSearchJql(jql, { maxResults = 25 } = {}) {
   return httpJson(url.toString(), { headers: authHeader() });
 }
 
+/**
+ * Returns issue keys of all issues that belong to the given Epic.
+ * JQL used: EPIC_CHILD_JQL env (with {epicKey} replaced) or default "parent = <epicKey>".
+ * For classic "Epic Link" field use e.g. EPIC_CHILD_JQL='"Epic Link" = {epicKey}'
+ */
+export async function jiraGetIssueKeysInEpic(epicKey, { maxResults = 100 } = {}) {
+  const template = process.env.EPIC_CHILD_JQL || 'parent = {epicKey}';
+  const jql = template.replace(/{epicKey}/g, epicKey);
+  const res = await jiraSearchJql(jql, { maxResults });
+  const issues = res.issues || [];
+  return issues.map((i) => i.key);
+}
+
 export async function jiraAddComment(key, commentText) {
   const url = `${base()}/rest/api/3/issue/${key}/comment`;
   return httpJson(url, {

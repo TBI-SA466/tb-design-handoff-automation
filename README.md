@@ -20,7 +20,19 @@ Automates **Figma ↔ Jira “design handoff”**:
 
 **Team presentation:** [docs/design-handoff-presentation.pptx](docs/design-handoff-presentation.pptx) – downloadable PowerPoint (idea, implementation, process). Source: [docs/design-handoff-presentation.md](docs/design-handoff-presentation.md). Regenerate with `npm run slides:export`.
 
-## Why this is useful (benefits)
+---
+
+## What it is (clear steps)
+
+1. **Reads Jira tickets** that contain one or more Figma design links.
+2. **Fetches the referenced Figma nodes** (components or component sets) via the Figma API.
+3. **Extracts variant/state information** from Figma (e.g. `State=Default`, `State=Disabled`).
+4. **Compares that information** to the **Acceptance Criteria (AC)** text in the Jira description.
+5. **Detects mismatches**: states in Figma not mentioned in AC, and states mentioned in AC but not found in Figma.
+6. **Optionally writes back to Jira**: summary comment, labels, checklist, and evidence attachments.
+7. **Produces local reports** (Markdown, text, and HTML) for auditing and sharing.
+
+## Why it exists (benefits)
 
 - **Faster handoff**: PM/Design/Dev can see “what states exist” in Figma without manually enumerating them.
 - **Less drift**: catches “Figma says X, Jira AC says Y” early—before code and QA diverge.
@@ -60,6 +72,8 @@ Automates **Figma ↔ Jira “design handoff”**:
 
 ## First-time setup (after cloning)
 
+These steps match the configuration and run flow in [docs/DESIGN-HANDOFF-SYSTEM.md](docs/DESIGN-HANDOFF-SYSTEM.md).
+
 1. **Create your config file** (the repo has no `.env`; it’s gitignored):
    ```bash
    cp config/example.env .env
@@ -96,8 +110,18 @@ Copy `config/example.env` to `.env` and fill in the values. The run script loads
 - **Optional**: `WRITE_BACK` (`true`/`false`) to control whether the tool modifies Jira (comment + checklist)
 - **Optional**: `JIRA_LABEL_AUTOMATION` (`true`/`false`)
 - **Optional**: `JIRA_ATTACH_EVIDENCE` (`true`/`false`)
+- **Optional**: `EPIC_CHILD_JQL` – JQL to find issues in an Epic for `--epic=KEY`; default `parent = {epicKey}`. For “Epic Link” use `"\"Epic Link\" = {epicKey}"`.
 
 ## Run (local)
+
+Same run options (issue, multiple issues, JQL, Epic, dry-run) are described in [docs/DESIGN-HANDOFF-SYSTEM.md](docs/DESIGN-HANDOFF-SYSTEM.md).
+
+**When to use what:**
+- **Single issue** – one ticket: `--issue=RFW-1234`
+- **Multiple issues** – comma-separated keys: `--issue=RFW-1234,RFW-1235`
+- **JQL** – search (e.g. sprint, board, project): `--jql="..."`
+- **Epic** – all child issues of an Epic: `--epic=RFW-100`
+- **Dry-run** – no Jira writes; reports and would-be comments only: `--dry-run=true`
 
 Run for a single issue:
 
@@ -117,6 +141,16 @@ Run for multiple issues via JQL:
 node ./scripts/run.mjs --jql="project = RFW AND updated >= -7d order by updated DESC"
 ```
 
+**Run for an Epic** (all child issues of the Epic; uses JQL `parent = <epicKey>` by default):
+
+```bash
+node ./scripts/run.mjs --epic=RFW-100
+node ./scripts/run.mjs --epic=RFW-100 --dry-run=true
+```
+
+If your project uses the classic **“Epic Link”** field instead of the parent hierarchy, set in `.env`:  
+`EPIC_CHILD_JQL="\"Epic Link\" = {epicKey}"`
+
 Dry-run (no Jira writes; report and would-be comments go to `reports/design-handoff.md` and `reports/jira-comments.txt`):
 
 ```bash
@@ -128,7 +162,7 @@ node ./scripts/run.mjs --issue=RFW-1234,RFW-1235 --dry-run=true
 
 - Put the **Figma link** in the Jira description (or summary).
 - Name variants in Figma like `State=Default, Checked=On` so the extractor can build a proper state matrix.
-- Add an **“Acceptance Criteria”** section header in Jira. The tool uses that as the target text to compare.
+- Add an **Acceptance Criteria** section header in Jira (e.g. “Acceptance Criteria”, “A/C”, “AC”, “a/c”, or “ac”). The tool uses that as the target text to compare.
 
 ## Outputs
 
@@ -175,7 +209,7 @@ Repo → Settings → Secrets and variables → Actions → Secrets:
 
 - **No Figma link found**: ensure the Jira ticket contains a full `https://www.figma.com/design/...` URL.
 - **No variants detected**: your node may not be a Component Set, or variant naming is not using `key=value`.
-- **AC not detected**: add a header like “Acceptance Criteria” in the description.
+- **AC not detected**: add a header like “Acceptance Criteria”, “A/C”, or “AC” in the description.
 - **Tool inserted a checklist**: this happens when `WRITE_BACK=true` and the ticket didn’t already contain the checklist marker.
 - **Permission errors**: verify your Jira and Figma tokens have access to the project/file.
 

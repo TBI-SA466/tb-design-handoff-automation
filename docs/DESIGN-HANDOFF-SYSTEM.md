@@ -60,7 +60,7 @@ The design handoff system is an automation tool that:
 3. **Find Figma links**: It scans the summary and description for URLs; any `https://www.figma.com/design/<fileKey>/...?node-id=...` is parsed to get `fileKey` and `node-id`.
 4. **Fetch Figma nodes**: For each unique (fileKey, nodeId), it calls the Figma REST API `GET /v1/files/:fileKey/nodes?ids=...` to get the node tree.
 5. **Extract variants**: From the node tree it collects **Component** and **Component Set** nodes and parses their **names** to build a variant property matrix (see below).
-6. **Parse Acceptance Criteria**: It looks for a section in the Jira description that starts with “Acceptance Criteria” (case-insensitive) and takes the following lines until the next header.
+6. **Parse Acceptance Criteria**: It looks for a section in the Jira description that starts with “Acceptance Criteria”, “A/C”, “AC”, “a/c”, or “ac” (case-insensitive, optional colon) and takes the following lines until the next header.
 7. **Compare and diff**: It compares the set of “values” from Figma (e.g. default, disabled, hover) with words/phrases in the AC text and produces two lists: *in Figma but not in AC* and *in AC but not in Figma*.
 8. **Accessibility check**: It runs a heuristic over the AC (and description) to see if certain a11y topics are mentioned (keyboard, focus, ARIA, error messaging, hit area).
 9. **Output**: It writes local reports and, unless in dry-run or `WRITE_BACK=false`, posts a Jira comment, optionally updates labels, optionally inserts a checklist, and optionally uploads evidence attachments.
@@ -72,8 +72,9 @@ The design handoff system is an automation tool that:
 ### 3.1 Entry point and CLI
 
 - **`scripts/run.mjs`**
-  - Parses CLI: `--issue=KEY` or `--issue=KEY1,KEY2,...` or `--jql="..."`, and `--dry-run=true`.
-  - Ensures `reports/` exists and calls the pipeline with `outDir`, `issueKeys`/`jql`, and `dryRun`.
+  - Parses CLI: `--issue=KEY`, `--issue=KEY1,KEY2,...`, `--epic=EPIC-KEY`, `--jql="..."`, and `--dry-run=true`.
+  - **Epic mode** (`--epic=RFW-100`): resolves all child issue keys of the Epic via `jiraGetIssueKeysInEpic` (JQL from `EPIC_CHILD_JQL` or default `parent = {epicKey}`), then runs the pipeline on those issues. Report summary includes “Epic: RFW-100 (N child issues)”.
+  - Ensures `reports/` exists and calls the pipeline with `outDir`, `issueKeys`/`jql`, `dryRun`, and optionally `epicKey`.
 
 ### 3.2 Pipeline
 
@@ -87,12 +88,15 @@ The design handoff system is an automation tool that:
     - per-issue `handoff.<KEY>.svg`,
     - (dry run) `jira-comments.txt`, `dry-run-results-and-mismatches.txt`, `design-handoff-report.html`.
 
+- **Epic-level handoff**: Use `--epic=EPIC-KEY` to run design handoff on every issue that belongs to that Epic. Child issues are found via JQL (default: `parent = EPIC-KEY`; override with `EPIC_CHILD_JQL`, e.g. `"Epic Link" = {epicKey}` for classic boards). The same pipeline runs for each child; the report and dry-run outputs aggregate all of them and the summary shows the Epic key.
+
 ### 3.3 Connectors
 
 - **`src/connectors/jira.mjs`**
   - **Jira Cloud REST v3** (base URL from `JIRA_BASE_URL`, auth: `JIRA_EMAIL` + `JIRA_API_TOKEN`).
   - `jiraGetIssue(key)` – get issue with fields: summary, description, status, labels, attachment.
   - `jiraSearchJql(jql, { maxResults })` – search using **`/rest/api/3/search/jql`** (current endpoint).
+    - `jiraGetIssueKeysInEpic(epicKey)` – return issue keys of all issues in the Epic (JQL from `EPIC_CHILD_JQL` or default `parent = {epicKey}`).
   - `jiraAddCommentAdf(key, adf)` – add a comment in Atlassian Document Format (ADF).
   - `jiraUpdateIssueDescription(key, adf)` – set description (used for checklist insert).
   - `jiraUpdateIssueLabels(key, labels)` – set issue labels.
@@ -149,7 +153,7 @@ The design handoff system is an automation tool that:
 
 ## 5. Acceptance Criteria and mismatch detection
 
-- **Finding AC**: The pipeline looks for a line that matches “Acceptance Criteria” (case-insensitive) and then takes all following lines until the next “header” (line starting with `#` or a pattern like `Word: `). That block is treated as the AC text.
+- **Finding AC**: The pipeline looks for a line that matches any of: “Acceptance Criteria” (case-insensitive), “A/C”, “AC”, “a/c”, “ac” (with optional colon), and then takes all following lines until the next “header” (line starting with `#` or a pattern like `Word: `). That block is treated as the AC text.
 - **Diff logic** (`diffStates`):
   - All values from the Figma summary (e.g. default, disabled, hover) are lowercased and collected.
   - Each such value is checked: is it **mentioned** in the AC text (substring match, case-insensitive)? If yes, it’s “mentioned”; if not, it goes into **“Values in Figma not mentioned in AC”**.
@@ -252,7 +256,7 @@ Use dry run to **preview** what would be posted and to **inspect mismatches** wi
 ## 11. Limitations and best practices
 
 - **Variant extraction** depends on Figma **naming**. Use consistent patterns (e.g. `State=Default`, `State=Disabled`) for best results.
-- **AC parsing** is line-based and header-based; keep “Acceptance Criteria” as a clear section header and list states/requirements in a way that matches the heuristic (e.g. words like “default”, “disabled”, “focus”).
+- **AC parsing** is line-based and header-based; use a clear section header (“Acceptance Criteria”, “A/C”, “AC”, “a/c”, or “ac”) and list states/requirements in a way that matches the heuristic (e.g. words like “default”, “disabled”, “focus”).
 - **Mismatch detection** is textual and heuristic; it can produce false positives/negatives (e.g. “focus” in a sentence vs. “Focus” as a variant name).
 - The tool **does not** modify the AC text itself; it only posts a comment and optional checklist/labels/attachments.
 - For **Figma embeds** in the HTML report to work, the report should be opened via HTTP (e.g. `npx serve reports -p 3333`); `file://` may block iframes.

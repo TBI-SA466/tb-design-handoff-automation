@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { runDesignHandoff } from '../src/pipeline/design-handoff.mjs';
+import { jiraGetIssueKeysInEpic } from '../src/connectors/jira.mjs';
+import { jiraGetIssueKeysInEpic } from '../src/connectors/jira.mjs';
 
 /** Load .env from project root into process.env (so clone + copy .env works without extra steps). */
 function loadEnv() {
@@ -35,15 +37,24 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
 
   const issueArg = args.issue;
-  const issueKeys = issueArg ? issueArg.split(',').map((k) => k.trim()).filter(Boolean) : null;
+  const epicKey = args.epic ? args.epic.trim() : null;
+  let issueKeys = issueArg ? issueArg.split(',').map((k) => k.trim()).filter(Boolean) : null;
   const jql = args.jql;
   const dryRun = String(args['dry-run'] || '').toLowerCase() === 'true';
 
-  if (!issueKeys?.length && !jql && !process.env.DEFAULT_JQL) {
-    throw new Error('Provide --issue=RFW-123 or --issue=RFW-123,RFW-456,... or --jql="..." or set DEFAULT_JQL in env');
+  if (epicKey) {
+    const childKeys = await jiraGetIssueKeysInEpic(epicKey);
+    if (!childKeys.length) {
+      throw new Error(`Epic ${epicKey}: no child issues found. Check EPIC_CHILD_JQL if you use "Epic Link" instead of parent.`);
+    }
+    issueKeys = childKeys;
   }
 
-  await runDesignHandoff({ outDir, issueKeys, jql, dryRun });
+  if (!issueKeys?.length && !jql && !process.env.DEFAULT_JQL) {
+    throw new Error('Provide --issue=RFW-123, --issue=KEY1,KEY2,..., --epic=RFW-100, or --jql="..." or set DEFAULT_JQL in env');
+  }
+
+  await runDesignHandoff({ outDir, issueKeys, jql, dryRun, epicKey });
 }
 
 main().catch((e) => {

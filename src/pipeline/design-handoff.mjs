@@ -1,3 +1,4 @@
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { jiraAddAttachments, jiraAddCommentAdf, jiraGetIssue, jiraSearchJql, jiraUpdateIssueDescription, jiraUpdateIssueLabels } from '../connectors/jira.mjs';
@@ -74,10 +75,19 @@ function summarizeVariantProperties(variants) {
   return summary;
 }
 
+/** True if the line looks like an Acceptance Criteria header (full phrase, A/C, AC, a/c, ac). */
+function isAcceptanceCriteriaHeader(line) {
+  const t = line.trim();
+  if (/acceptance\s+criteria/i.test(t)) return true;
+  if (/^A\s*\/\s*C\s*:?\s*$/i.test(t)) return true; // A/C or A / C, optional colon
+  if (/^AC\s*:?\s*$/i.test(t)) return true;          // AC, optional colon
+  return false;
+}
+
 function findAcceptanceCriteriaText(plainText) {
-  // Best-effort: pull lines under "Acceptance Criteria" header.
+  // Best-effort: pull lines under "Acceptance Criteria" header (or A/C, AC, a/c, ac).
   const lines = (plainText || '').split('\n');
-  const idx = lines.findIndex((l) => /acceptance criteria/i.test(l.trim()));
+  const idx = lines.findIndex((l) => isAcceptanceCriteriaHeader(l));
   if (idx < 0) return '';
   const out = [];
   for (let i = idx + 1; i < lines.length; i++) {
@@ -123,7 +133,7 @@ function diffStates({ acText, figmaSummary }) {
   return { figmaMissingInAc, acMissingInFigma };
 }
 
-export async function runDesignHandoff({ outDir, issueKeys, jql, dryRun = false }) {
+export async function runDesignHandoff({ outDir, issueKeys, jql, dryRun = false, epicKey = null }) {
   const issues = [];
   if (issueKeys?.length) {
     for (const key of issueKeys) {
@@ -450,8 +460,9 @@ export async function runDesignHandoff({ outDir, issueKeys, jql, dryRun = false 
       {
         title: 'Summary',
         body: [
+          ...(epicKey ? [`- Epic: ${epicKey} (${issues.length} child issues)`] : []),
           `- Issues processed: ${issues.length}`,
-          `- Mode: ${issueKeys?.length ? `issue(s): ${issueKeys.join(', ')}` : 'JQL search'}`,
+          `- Mode: ${epicKey ? `Epic ${epicKey}` : issueKeys?.length ? `issue(s): ${issueKeys.join(', ')}` : 'JQL search'}`,
           `- Write-back (Jira comment/checklist): ${writeBack && !dryRun ? 'enabled' : 'disabled (dry-run or WRITE_BACK=false)'}`,
         ].join('\n'),
       },

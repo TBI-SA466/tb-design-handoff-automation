@@ -28,7 +28,7 @@ style: |
 2. **The idea** – What is design handoff automation?
 3. **How it works** – End-to-end flow
 4. **Implementation** – Key components
-5. **Process** – Variant extraction, AC comparison, mismatches
+5. **Process** – AC comparison, mismatches
 6. **Outputs & reports** – What you get
 7. **Dry run & safety** – Preview without changing Jira
 8. **Benefits & takeaways**
@@ -108,18 +108,7 @@ Jira issues (with Figma links)
 
 ---
 
-# 6. Process – Variant extraction (Figma)
-
-- Tool parses **component names** in Figma (not the variant properties API).
-- **Supported pattern:** `PropertyName=Value` comma-separated  
-  e.g. `State=Default, Checked=On`
-- **Fallback:** names with `/` → single `_variant` (e.g. "Desktop / Mobile").
-- Walks the node tree, collects every **Component** and **Component Set**, and merges all property names and values into a **summary** (e.g. `State: [Default, Disabled, Error, Hover]`).
-- **Best practice:** name variants consistently in Figma (e.g. `State=Default`, `State=Disabled`).
-
----
-
-# 7. Process – Acceptance Criteria & mismatches
+# 6. Process – Acceptance Criteria & mismatches
 
 **Finding AC**
 - Look for a line like **"Acceptance Criteria"** (case-insensitive) in the Jira description.
@@ -132,7 +121,7 @@ Jira issues (with Figma links)
 
 ---
 
-# 8. Process – Accessibility check
+# 7. Process – Accessibility check
 
 - **Heuristic** over AC (and description) text.
 - Looks for keywords for:
@@ -146,7 +135,7 @@ Jira issues (with Figma links)
 
 ---
 
-# 9. Jira write-back (when not dry run)
+# 8. Jira write-back (when not dry run)
 
 | Feature | What it does |
 |--------|----------------|
@@ -159,7 +148,7 @@ Controlled by env: `WRITE_BACK`, `JIRA_LABEL_AUTOMATION`, `JIRA_ATTACH_EVIDENCE`
 
 ---
 
-# 10. Outputs & reports
+# 9. Outputs & reports
 
 **Every run**
 - `reports/design-handoff.md` – Summary, mode, results table.
@@ -173,7 +162,7 @@ Controlled by env: `WRITE_BACK`, `JIRA_LABEL_AUTOMATION`, `JIRA_ATTACH_EVIDENCE`
 
 ---
 
-# 11. Dry run – Safe preview
+# 10. Dry run – Safe preview
 
 - **`--dry-run=true`** → **No Jira writes** (no comment, no description update, no labels, no attachments).
 - Pipeline still runs fully: fetches Jira + Figma, extracts variants, computes mismatches and a11y.
@@ -182,7 +171,7 @@ Controlled by env: `WRITE_BACK`, `JIRA_LABEL_AUTOMATION`, `JIRA_ATTACH_EVIDENCE`
 
 ---
 
-# 12. Configuration (environment)
+# 11. Configuration (environment)
 
 **Required**
 - `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
@@ -196,7 +185,7 @@ Controlled by env: `WRITE_BACK`, `JIRA_LABEL_AUTOMATION`, `JIRA_ATTACH_EVIDENCE`
 
 ---
 
-# 13. Benefits & takeaways
+# 12. Benefits & takeaways
 
 - **Less drift** – Figma and Jira AC stay aligned; mismatches are visible early.
 - **Faster handoff** – “What states exist?” is answered automatically from Figma.
@@ -207,7 +196,7 @@ Controlled by env: `WRITE_BACK`, `JIRA_LABEL_AUTOMATION`, `JIRA_ATTACH_EVIDENCE`
 
 ---
 
-# 14. How to run (recap)
+# 13. How to run (recap)
 
 - **Single ticket:**  
   `node ./scripts/run.mjs --issue=RFW-496`
